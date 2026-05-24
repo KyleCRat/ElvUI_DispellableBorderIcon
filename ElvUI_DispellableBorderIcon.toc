@@ -1,0 +1,12 @@
+## Interface: 120005
+## Title: |cff1784d1ElvUI|r Dispellable Border Icon
+## Notes: Adds Cell-style dispellable debuff highlight and icons to the ElvUI player frame.
+## Author: Yvairel
+## Version: 12.0.5-1
+## RequiredDeps: ElvUI
+## OptionalDeps: Cell
+## SavedVariables: ElvUI_DispellableBorderIconDB
+## AddonCompartmentFunc: ElvUIDispellableBorderIcon_OnAddonCompartmentClick
+
+Core.lua
+Options.lua
