@@ -4,7 +4,6 @@
 ## Author: Yvairel
 ## Version: 12.0.5-1
 ## RequiredDeps: ElvUI
-## OptionalDeps: Cell
 ## SavedVariables: ElvUI_DispellableBorderIconDB
 ## AddonCompartmentFunc: ElvUIDispellableBorderIcon_OnAddonCompartmentClick
 

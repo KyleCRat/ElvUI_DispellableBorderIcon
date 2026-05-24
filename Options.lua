@@ -3,12 +3,12 @@ local ADDON_NAME, NS = ...
 local E = unpack(ElvUI)
 local UF = E:GetModule("UnitFrames")
 
-local DISPEL_TYPE_VALUES = {
-    Magic = "Magic",
-    Curse = "Curse",
-    Disease = "Disease",
-    Poison = "Poison",
-    Bleed = "Bleed",
+local DISPEL_ORDER = { "Magic", "Curse", "Disease", "Poison", "Bleed" }
+
+local DISPEL_MODE_VALUES = {
+    disabled = "Disabled",
+    always = "Always",
+    player = "Only Dispellable by Me",
 }
 
 local POINT_VALUES = {
@@ -61,13 +61,32 @@ local function Set(info, value)
     Apply()
 end
 
-local function GetFilter(_, key)
-    return NS.db.filters[key]
+local function GetDispelMode(info)
+    return NS.db.dispelModes[info[#info]]
 end
 
-local function SetFilter(_, key, value)
-    NS.db.filters[key] = value
+local function SetDispelMode(info, value)
+    NS.db.dispelModes[info[#info]] = value
     Apply()
+end
+
+local function BuildDispelModeOptions()
+    local args = {}
+
+    for index, dispelType in ipairs(DISPEL_ORDER) do
+        local key = dispelType
+
+        args[key] = {
+            order = index,
+            type = "select",
+            name = key,
+            values = DISPEL_MODE_VALUES,
+            get = GetDispelMode,
+            set = SetDispelMode,
+        }
+    end
+
+    return args
 end
 
 function NS.RegisterOptions()
@@ -105,20 +124,13 @@ function NS.RegisterOptions()
                 desc = "Show a preview indicator on the player frame without requiring a debuff.",
                 width = "full",
             },
-            dispellableByMe = {
-                order = 3,
-                type = "toggle",
-                name = "Only Dispellable by Me",
-                desc = "Use Blizzard's player-dispellable aura filter before showing the indicator.",
-                width = "full",
-            },
-            filters = {
+            dispelModes = {
                 order = 10,
-                type = "multiselect",
+                type = "group",
                 name = "Dispel Types",
-                values = DISPEL_TYPE_VALUES,
-                get = GetFilter,
-                set = SetFilter,
+                desc = "Choose whether each dispel type is disabled, always shown, or only shown when your character can dispel it.",
+                inline = true,
+                args = BuildDispelModeOptions(),
             },
             appearance = {
                 order = 20,

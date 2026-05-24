@@ -27,8 +27,9 @@ local GetAuraDispelTypeColor = C_UnitAuras.GetAuraDispelTypeColor
 local IsAuraFilteredOutByInstanceID = C_UnitAuras.IsAuraFilteredOutByInstanceID
 
 local ADDON_TITLE = "ElvUI Dispellable Border Icon"
-local CELL_DEBUFF_TEXTURE = "Interface\\AddOns\\Cell\\Media\\Debuffs\\"
-local CELL_GRADIENT_TEXTURE = "Interface\\AddOns\\Cell\\Media\\gradient"
+local ADDON_MEDIA = "Interface\\AddOns\\ElvUI_DispellableBorderIcon\\Media\\"
+local DISPEL_DEBUFF_TEXTURE = ADDON_MEDIA .. "Debuffs\\"
+local DISPEL_GRADIENT_TEXTURE = ADDON_MEDIA .. "gradient"
 
 local DISPEL_TYPES = {
     { name = "Magic", idx = 1, nextIdx = 2, color = { r = 0.20, g = 0.60, b = 1.00 } },
@@ -43,7 +44,6 @@ local DISPEL_ORDER = { "Magic", "Curse", "Disease", "Poison", "Bleed" }
 NS.defaults = {
     enabled = true,
     testMode = false,
-    dispellableByMe = true,
     highlightType = "gradient-half",
     iconStyle = "blizzard",
     orientation = "right-to-left",
@@ -53,12 +53,12 @@ NS.defaults = {
     xOffset = 0,
     yOffset = 4,
     frameLevel = 15,
-    filters = {
-        Magic = true,
-        Curse = true,
-        Disease = true,
-        Poison = true,
-        Bleed = true,
+    dispelModes = {
+        Magic = "player",
+        Curse = "player",
+        Disease = "player",
+        Poison = "player",
+        Bleed = "player",
     },
 }
 
@@ -97,6 +97,29 @@ local function IsValueNonSecret(value)
     end
 
     return true
+end
+
+local function GetDispelMode(dispelType)
+    return NS.db.dispelModes[dispelType]
+end
+
+local function IsDispelTypeEnabled(dispelType)
+    return GetDispelMode(dispelType) ~= "disabled"
+end
+
+local function IsSecretDispelTypeEnabled(dispelType, includePlayerModes)
+    return IsDispelTypeEnabled(dispelType)
+        and (includePlayerModes or GetDispelMode(dispelType) == "always")
+end
+
+local function HasVisibleSecretDispelType(includePlayerModes)
+    for _, dispelType in ipairs(DISPEL_ORDER) do
+        if IsSecretDispelTypeEnabled(dispelType, includePlayerModes) then
+            return true
+        end
+    end
+
+    return false
 end
 
 local function GetPlayerFrame()
@@ -179,10 +202,10 @@ local function SetIcon(display, index, dispelType)
     icon:SetAlpha(1)
 
     if db.iconStyle == "rhombus" then
-        icon:SetTexture(CELL_DEBUFF_TEXTURE .. "Rhombus")
+        icon:SetTexture(DISPEL_DEBUFF_TEXTURE .. "Rhombus")
         icon:SetVertexColor(GetTypeColor(dispelType))
     else
-        icon:SetTexture(CELL_DEBUFF_TEXTURE .. dispelType)
+        icon:SetTexture(DISPEL_DEBUFF_TEXTURE .. dispelType)
         icon:SetVertexColor(1, 1, 1, 1)
     end
 
@@ -274,11 +297,11 @@ local function ShowHighlight(display, dispelType, r, g, b, alpha, useProvidedAlp
         highlight:SetAllPoints(statusTexture or health)
         highlight:SetVertexColor(r, g, b, alpha)
     elseif highlightType == "gradient" then
-        highlight:SetTexture(CELL_GRADIENT_TEXTURE)
+        highlight:SetTexture(DISPEL_GRADIENT_TEXTURE)
         highlight:SetAllPoints(health)
         highlight:SetVertexColor(r, g, b, alpha)
     elseif highlightType == "gradient-half" then
-        highlight:SetTexture(CELL_GRADIENT_TEXTURE)
+        highlight:SetTexture(DISPEL_GRADIENT_TEXTURE)
         highlight:SetPoint("BOTTOMLEFT", health, "BOTTOMLEFT")
         highlight:SetPoint("TOPRIGHT", health, "RIGHT")
         highlight:SetVertexColor(r, g, b, alpha)
@@ -302,9 +325,28 @@ local function BuildIconCurveColor(dispelType)
     return CreateColor(r, g, b, 1)
 end
 
+local function BuildSecretHighlightCurve(includePlayerModes)
+    local stepType = Enum.LuaCurveType.Step
+    local transparent = CreateColor(0, 0, 0, 0)
+    local curve = C_CurveUtil.CreateColorCurve()
+    curve:SetType(stepType)
+    curve:AddPoint(0, transparent)
+
+    for _, info in ipairs(DISPEL_TYPES) do
+        curve:AddPoint(info.idx, BuildHighlightCurveColor(info.name, IsSecretDispelTypeEnabled(info.name, includePlayerModes)))
+    end
+
+    curve:AddPoint(5, transparent)
+    curve:AddPoint(9, transparent)
+    curve:AddPoint(12, transparent)
+
+    return curve
+end
+
 function NS:BuildDispelCurves()
     self.curvesReady = false
     self.highlightCurve = nil
+    self.alwaysHighlightCurve = nil
     self.bracketCurves = nil
 
     if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and GetAuraDispelTypeColor and Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step) then
@@ -313,16 +355,6 @@ function NS:BuildDispelCurves()
 
     local stepType = Enum.LuaCurveType.Step
     local transparent = CreateColor(0, 0, 0, 0)
-
-    local highlightCurve = C_CurveUtil.CreateColorCurve()
-    highlightCurve:SetType(stepType)
-    highlightCurve:AddPoint(0, transparent)
-    for _, info in ipairs(DISPEL_TYPES) do
-        highlightCurve:AddPoint(info.idx, BuildHighlightCurveColor(info.name, self.db.filters[info.name]))
-    end
-    highlightCurve:AddPoint(5, transparent)
-    highlightCurve:AddPoint(9, transparent)
-    highlightCurve:AddPoint(12, transparent)
 
     local bracketCurves = {}
     for _, info in ipairs(DISPEL_TYPES) do
@@ -334,7 +366,8 @@ function NS:BuildDispelCurves()
         bracketCurves[info.name] = curve
     end
 
-    self.highlightCurve = highlightCurve
+    self.highlightCurve = BuildSecretHighlightCurve(true)
+    self.alwaysHighlightCurve = BuildSecretHighlightCurve(false)
     self.bracketCurves = bracketCurves
     self.curvesReady = true
 end
@@ -371,11 +404,23 @@ local function IsPlayerDispellableAura(unit, auraInstanceID, debuffType)
     return false
 end
 
+local function ShouldShowDispelType(unit, auraInstanceID, debuffType)
+    if not (debuffType and IsDispelTypeEnabled(debuffType)) then
+        return false
+    end
+
+    if GetDispelMode(debuffType) == "always" then
+        return true
+    end
+
+    return IsPlayerDispellableAura(unit, auraInstanceID, debuffType)
+end
+
 local function ScanPlayerDispels(found)
     wipe(found)
 
-    local db = NS.db
     local secretAuraID, secretUnit
+    local secretPlayerDispellable
 
     for index = 1, 60 do
         local ok, aura = pcall(GetAuraDataByIndex, "player", index, "HARMFUL")
@@ -395,23 +440,20 @@ local function ScanPlayerDispels(found)
                 secretDispellable = true
             end
 
-            local canShow
-            if db.dispellableByMe then
-                canShow = IsPlayerDispellableAura("player", auraInstanceID, debuffType)
-            else
-                canShow = debuffType or secretDispellable
-            end
-
-            if canShow and debuffType and db.filters[debuffType] then
+            if ShouldShowDispelType("player", auraInstanceID, debuffType) then
                 found[debuffType] = true
-            elseif canShow and secretDispellable and NS.curvesReady then
-                secretAuraID = auraInstanceID
-                secretUnit = "player"
+            elseif secretDispellable and NS.curvesReady then
+                local playerDispellable = IsPlayerDispellableAura("player", auraInstanceID)
+                if HasVisibleSecretDispelType(playerDispellable) then
+                    secretAuraID = auraInstanceID
+                    secretUnit = "player"
+                    secretPlayerDispellable = playerDispellable
+                end
             end
         end
     end
 
-    return secretUnit, secretAuraID
+    return secretUnit, secretAuraID, secretPlayerDispellable
 end
 
 local foundDispels = {}
@@ -421,7 +463,7 @@ local function BuildTestDispels(found)
 
     local added = false
     for _, dispelType in ipairs(DISPEL_ORDER) do
-        if NS.db.filters[dispelType] then
+        if IsDispelTypeEnabled(dispelType) then
             found[dispelType] = true
             added = true
         end
@@ -467,32 +509,40 @@ local function RenderNormalDispels(display, found)
     return highlighted or iconsShown > 0
 end
 
-local function RenderSecretDispel(display, unit, auraInstanceID)
+local function RenderSecretDispel(display, unit, auraInstanceID, playerDispellable)
     local db = NS.db
     if not (NS.curvesReady and unit and auraInstanceID) then
         return false
     end
 
+    local includePlayerModes = playerDispellable == true
+    local highlightCurve = includePlayerModes and NS.highlightCurve or NS.alwaysHighlightCurve
     local rendered = false
-    local highlightColor = GetAuraDispelTypeColor(unit, auraInstanceID, NS.highlightCurve)
+    local highlightColor = GetAuraDispelTypeColor(unit, auraInstanceID, highlightCurve)
     display.highlight:Hide()
 
     if highlightColor and db.highlightType ~= "none" then
         local r, g, b, alpha = highlightColor:GetRGBA()
-        ShowHighlight(display, nil, r, g, b, alpha, true)
-        rendered = true
+        if alpha and alpha > 0 then
+            ShowHighlight(display, nil, r, g, b, alpha, true)
+            rendered = true
+        end
     end
 
     if db.iconStyle ~= "none" then
         local iconsShown = 0
+        local hasVisibleIcon = false
         for _, info in ipairs(DISPEL_TYPES) do
-            if db.filters[info.name] then
+            if IsSecretDispelTypeEnabled(info.name, includePlayerModes) then
                 iconsShown = iconsShown + 1
                 local icon = SetIcon(display, iconsShown, info.name)
                 local iconColor = GetAuraDispelTypeColor(unit, auraInstanceID, NS.bracketCurves[info.name])
                 if icon and iconColor then
                     local _, _, _, alpha = iconColor:GetRGBA()
                     icon:SetAlpha(alpha)
+                    if alpha and alpha > 0 then
+                        hasVisibleIcon = true
+                    end
                 elseif icon then
                     icon:SetAlpha(0)
                 end
@@ -503,7 +553,7 @@ local function RenderSecretDispel(display, unit, auraInstanceID)
             display.icons[i]:Hide()
         end
 
-        if iconsShown > 0 then
+        if iconsShown > 0 and hasVisibleIcon then
             LayoutIcons(display, iconsShown, true)
             display.holder:Show()
             rendered = true
@@ -539,11 +589,11 @@ function NS:Update()
         return
     end
 
-    local secretUnit, secretAuraID = ScanPlayerDispels(foundDispels)
+    local secretUnit, secretAuraID, secretPlayerDispellable = ScanPlayerDispels(foundDispels)
     local rendered = RenderNormalDispels(display, foundDispels)
 
     if not rendered then
-        rendered = RenderSecretDispel(display, secretUnit, secretAuraID)
+        rendered = RenderSecretDispel(display, secretUnit, secretAuraID, secretPlayerDispellable)
     end
 
     if not rendered then
