@@ -99,6 +99,18 @@ local function IsValueNonSecret(value)
     return true
 end
 
+local function IsRenderableAlpha(alpha)
+    if not alpha then
+        return false
+    end
+
+    if IsValueNonSecret(alpha) then
+        return alpha > 0
+    end
+
+    return true
+end
+
 local function GetDispelMode(dispelType)
     return NS.db.dispelModes[dispelType]
 end
@@ -523,7 +535,7 @@ local function RenderSecretDispel(display, unit, auraInstanceID, playerDispellab
 
     if highlightColor and db.highlightType ~= "none" then
         local r, g, b, alpha = highlightColor:GetRGBA()
-        if alpha and alpha > 0 then
+        if IsRenderableAlpha(alpha) then
             ShowHighlight(display, nil, r, g, b, alpha, true)
             rendered = true
         end
@@ -539,8 +551,12 @@ local function RenderSecretDispel(display, unit, auraInstanceID, playerDispellab
                 local iconColor = GetAuraDispelTypeColor(unit, auraInstanceID, NS.bracketCurves[info.name])
                 if icon and iconColor then
                     local _, _, _, alpha = iconColor:GetRGBA()
-                    icon:SetAlpha(alpha)
-                    if alpha and alpha > 0 then
+                    if alpha then
+                        icon:SetAlpha(alpha)
+                    else
+                        icon:SetAlpha(0)
+                    end
+                    if IsRenderableAlpha(alpha) then
                         hasVisibleIcon = true
                     end
                 elseif icon then
